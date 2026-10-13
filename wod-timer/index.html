@@ -52,7 +52,8 @@ html,body{height:100%;margin:0;background:#000;color:var(--text);font-family:var
 .clock .d{display:inline-block;width:.62em;text-align:center}
 .clock .c{display:inline-block;width:.3em;text-align:center;transform:translateY(-.05em)}
 #stage[data-paused=true] .clock{opacity:.5}
-.sub{font-family:var(--num);font-size:3.2cqw;letter-spacing:.1em;color:var(--text);min-height:1.3em;line-height:1.3}
+.sub{font-family:var(--num);font-size:3.2cqw;letter-spacing:.1em;color:var(--text);min-height:1.3em;line-height:1.3;white-space:pre-line}
+body[data-mode=station] .sub{min-height:2.6em}
 .bar{width:80%;height:1.1cqw;background:#ffffff18;border-radius:1cqw;overflow:hidden;margin-top:1.2cqw}
 .bar i{display:block;height:100%;width:100%;background:var(--c);transform-origin:left center;transform:scaleX(0)}
 
@@ -111,8 +112,13 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--work)}
 body[data-mode=fortime] [data-for~=fortime],
 body[data-mode=amrap] [data-for~=amrap],
 body[data-mode=emom] [data-for~=emom],
-body[data-mode=tabata] [data-for~=tabata]{display:inline-flex}
+body[data-mode=tabata] [data-for~=tabata],
+body[data-mode=station] [data-for~=station]{display:inline-flex}
 .hint{color:var(--mute);font-size:12px}
+@media (max-width:520px){
+  .tabs{width:100%}
+  .tabs button{flex:1;padding:8px 4px;font-size:12px;letter-spacing:.02em}
+}
 
 /* 화면 모드: 컨트롤을 숨기고 16:9 무대만 크게 */
 body.clean #controls{display:none}
@@ -162,6 +168,7 @@ body.clean.moving #reveal{opacity:1}
           <button type="button" role="tab" data-mode="amrap">AMRAP</button>
           <button type="button" role="tab" data-mode="emom">EMOM</button>
           <button type="button" role="tab" data-mode="tabata">TABATA</button>
+          <button type="button" role="tab" data-mode="station">STATION</button>
         </div>
         <div class="fields">
           <label data-for="fortime">타임캡(분, 0=없음) <input type="number" id="cap" inputmode="numeric"></label>
@@ -171,7 +178,13 @@ body.clean.moving #reveal{opacity:1}
           <label data-for="tabata">운동(초) <input type="number" id="tabWork" inputmode="numeric"></label>
           <label data-for="tabata">휴식(초) <input type="number" id="tabRest" inputmode="numeric"></label>
           <label data-for="tabata">라운드 <input type="number" id="tabRounds" inputmode="numeric"></label>
+          <label data-for="station">동작 수 <input type="number" id="stMoves" inputmode="numeric"></label>
+          <label data-for="station">운동(초) <input type="number" id="stWork" inputmode="numeric"></label>
+          <label data-for="station">휴식(초) <input type="number" id="stRest" inputmode="numeric"></label>
+          <label data-for="station">세트 <input type="number" id="stSets" inputmode="numeric"></label>
+          <label data-for="station">동작 간 휴식(초) <input type="number" id="stGap" inputmode="numeric"></label>
           <label>준비(초) <input type="number" id="ready" inputmode="numeric"></label>
+          <span class="hint" data-for="station" id="stTotal"></span>
         </div>
       </fieldset>
     </div>
@@ -207,13 +220,15 @@ const KEY = 'wodTimer.v1';
 const DEFAULTS = {
   mode:'amrap', cap:0, amrap:20, emomSec:60, emomRounds:10,
   tabWork:20, tabRest:10, tabRounds:8, ready:10,
+  stMoves:5, stWork:20, stRest:30, stSets:3, stGap:50,
   sound:true, fs:3, autofit:true, title:"TODAY'S WOD", wod:''
 };
 const LIMITS = {
   cap:[0,180], amrap:[1,180], emomSec:[5,600], emomRounds:[1,99],
-  tabWork:[1,600], tabRest:[0,600], tabRounds:[1,99], ready:[0,60], fs:[1.2,6]
+  tabWork:[1,600], tabRest:[0,600], tabRounds:[1,99], ready:[0,60], fs:[1.2,6],
+  stMoves:[1,20], stWork:[1,600], stRest:[0,600], stSets:[1,20], stGap:[0,600]
 };
-const MODES = ['fortime','amrap','emom','tabata'];
+const MODES = ['fortime','amrap','emom','tabata','station'];
 const clamp = (v,[lo,hi]) => Math.min(hi,Math.max(lo,v));
 
 function sanitize(obj){
@@ -263,10 +278,24 @@ function buildTimeline(c){
     segs.push({kind:'work', dur:c.amrap*60, dir:'down'});
   } else if(c.mode === 'emom'){
     for(let r=1; r<=c.emomRounds; r++) segs.push({kind:'work', dur:c.emomSec, dir:'down', round:r, rounds:c.emomRounds});
-  } else {
+  } else if(c.mode === 'tabata'){
     for(let r=1; r<=c.tabRounds; r++){
       segs.push({kind:'work', dur:c.tabWork, dir:'down', round:r, rounds:c.tabRounds});
       if(r < c.tabRounds && c.tabRest > 0) segs.push({kind:'rest', dur:c.tabRest, dir:'down', round:r, rounds:c.tabRounds});
+    }
+  } else {
+    // STATION: 동작마다 (운동 + 세트 사이 휴식) × 세트 수, 마지막 세트 뒤에는 다음 동작 준비 휴식
+    for(let m=1; m<=c.stMoves; m++){
+      for(let s=1; s<=c.stSets; s++){
+        const at = {move:m, moves:c.stMoves, set:s, sets:c.stSets};
+        segs.push({kind:'work', dur:c.stWork, dir:'down', ...at});
+        if(m === c.stMoves && s === c.stSets) break;          // 마지막 동작의 마지막 세트에서 끝
+        if(s === c.stSets){
+          if(c.stGap > 0) segs.push({kind:'rest', next:true, dur:c.stGap, dir:'down', ...at});
+        } else if(c.stRest > 0){
+          segs.push({kind:'rest', dur:c.stRest, dir:'down', ...at});
+        }
+      }
     }
   }
   let t = 0;
@@ -287,12 +316,17 @@ function fmt(sec){
   return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0');
 }
 const short = s => s % 60 === 0 ? `${s/60}'` : `${s}s`;
+function human(sec){
+  const m = Math.floor(sec/60), s = sec % 60;
+  return m ? (s ? `${m}분 ${s}초` : `${m}분`) : `${s}초`;
+}
 function modeTitle(){
   switch(S.mode){
     case 'fortime': return S.cap > 0 ? `FOR TIME · CAP ${S.cap}'` : 'FOR TIME';
     case 'amrap':   return `AMRAP ${S.amrap}'`;
     case 'emom':    return `EMOM ${S.emomRounds} × ${short(S.emomSec)}`;
-    default:        return `TABATA ${S.tabWork}/${S.tabRest} × ${S.tabRounds}`;
+    case 'tabata':  return `TABATA ${S.tabWork}/${S.tabRest} × ${S.tabRounds}`;
+    default:        return `${S.stMoves} MOVES · ${S.stWork}/${S.stRest} × ${S.stSets} SETS`;
   }
 }
 
@@ -409,6 +443,19 @@ const el = {
 let last = {};
 function setText(node, key, val){ if(last[key] !== val){ last[key] = val; node.textContent = val; } }
 
+// 타이머 아래 보조 문구 (두 줄까지 가능)
+function subFor(seg){
+  if(seg.round) return `ROUND ${seg.round} / ${seg.rounds}`;
+  if(seg.moves){
+    if(seg.next) return `MOVE ${seg.move + 1} / ${seg.moves}\nGET READY`;
+    if(seg.kind === 'rest') return `MOVE ${seg.move} / ${seg.moves}\nNEXT SET ${seg.set + 1} / ${seg.sets}`;
+    return `MOVE ${seg.move} / ${seg.moves}\nSET ${seg.set} / ${seg.sets}`;
+  }
+  if(seg.kind === 'ready') return S.mode === 'station' ? `MOVE 1 / ${S.stMoves}` : '';
+  if(S.mode === 'fortime' && S.cap > 0) return `TIME CAP ${fmt(S.cap*60)}`;
+  return '';
+}
+
 function render(){
   const e = cur();
   const loc = locate(TL, e);
@@ -425,14 +472,12 @@ function render(){
     const first = TL.segs.find(s => s.kind !== 'ready');
     phase = 'idle'; label = 'READY';
     sec = first.dir === 'up' ? 0 : first.dur;
-    if(first.round) sub = `ROUND 1 / ${first.rounds}`;
-    else if(S.mode === 'fortime' && S.cap > 0) sub = `TIME CAP ${fmt(S.cap*60)}`;
+    sub = subFor(first);
   } else {
-    phase = seg.kind;
-    label = !running ? 'PAUSED' : seg.kind === 'ready' ? 'GET READY' : seg.kind === 'rest' ? 'REST' : 'WORK';
+    phase = seg.next ? 'ready' : seg.kind;      // 다음 동작 준비는 노란색
+    label = !running ? 'PAUSED' : seg.next ? 'NEXT MOVE' : seg.kind === 'ready' ? 'GET READY' : seg.kind === 'rest' ? 'REST' : 'WORK';
     sec = seg.dir === 'up' ? Math.floor(loc.local) : Math.ceil(seg.dur - loc.local);
-    if(seg.round) sub = `ROUND ${seg.round} / ${seg.rounds}`;
-    else if(seg.kind === 'work' && S.mode === 'fortime' && S.cap > 0) sub = `TIME CAP ${fmt(S.cap*60)}`;
+    sub = subFor(seg);
     if(isFinite(seg.dur)) progress = Math.min(1, loc.local / seg.dur);
   }
 
@@ -456,6 +501,7 @@ function render(){
 /* ---------- 컨트롤 연결 ---------- */
 function rebuild(){
   TL = buildTimeline(S);
+  $('#stTotal').textContent = '총 ' + human(TL.total - S.ready) + ' (준비 제외)';
   document.body.dataset.mode = S.mode;
   document.querySelectorAll('#modeTabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === S.mode)));
   reset();
