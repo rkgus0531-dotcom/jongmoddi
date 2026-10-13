@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>WOD Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07080a; --panel:#13161b; --panel2:#1b1f26; --line:#2a2f38;
+  --text:#f1f3f5; --mute:#8b93a1;
+  --idle:#e8eaed; --ready:#ffc83d; --work:#35e08a; --rest:#ff5a5f; --done:#5ac8fa;
+  --num:"Oswald",Impact,"Arial Narrow","Helvetica Neue",Arial,sans-serif;
+  --ui:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#000;color:var(--text);font-family:var(--ui);-webkit-tap-highlight-color:transparent}
+
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column}
+
+/* ---------- 16:9 무대 (유튜브 화면 비율) ---------- */
+#stageWrap{flex:1 1 0;min-height:0;display:grid;place-items:center;container-type:size}
+#stage{
+  width:min(100cqw,calc(100cqh * 16 / 9));aspect-ratio:16/9;
+  container-type:size;display:grid;grid-template-columns:1fr 1fr;
+  background:var(--bg);overflow:hidden;
+  --c:var(--idle);
+}
+#stage[data-phase=ready]{--c:var(--ready)}
+#stage[data-phase=work]{--c:var(--work)}
+#stage[data-phase=rest]{--c:var(--rest)}
+#stage[data-phase=done]{--c:var(--done)}
+.half{min-width:0;min-height:0}
+
+/* 왼쪽: 타이머 */
+.timer-half{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:2cqw;gap:.5cqw;
+  background:color-mix(in srgb,var(--c) 9%,var(--bg));
+  transition:background .25s;
+}
+.mode-label{font-family:var(--num);font-size:2.1cqw;letter-spacing:.12em;color:var(--mute);text-transform:uppercase}
+.phase-label{font-family:var(--num);font-size:4cqw;font-weight:700;letter-spacing:.16em;color:var(--c);min-height:1.2em;line-height:1.2}
+.clock{
+  display:flex;justify-content:center;
+  font-family:var(--num);font-weight:700;font-size:16cqw;line-height:1.05;color:var(--c);
+}
+.clock .d{display:inline-block;width:.62em;text-align:center}
+.clock .c{display:inline-block;width:.3em;text-align:center;transform:translateY(-.05em)}
+#stage[data-paused=true] .clock{opacity:.5}
+.sub{font-family:var(--num);font-size:3.2cqw;letter-spacing:.1em;color:var(--text);min-height:1.3em;line-height:1.3}
+.bar{width:80%;height:1.1cqw;background:#ffffff18;border-radius:1cqw;overflow:hidden;margin-top:1.2cqw}
+.bar i{display:block;height:100%;width:100%;background:var(--c);transform-origin:left center;transform:scaleX(0)}
+
+/* 오른쪽: 오늘의 운동 */
+.wod-half{
+  display:flex;flex-direction:column;background:#0f1216;
+  border-left:.15cqw solid var(--line);padding:2cqw 2.4cqw;
+}
+.wod-head{
+  display:flex;align-items:baseline;justify-content:space-between;gap:1cqw;
+  border-bottom:.2cqw solid var(--line);padding-bottom:1cqw;margin-bottom:1.2cqw;
+}
+#wodTitle{
+  flex:1;min-width:0;background:transparent;border:0;outline:0;padding:0;
+  color:var(--ready);font-family:var(--num);font-size:2.4cqw;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  text-overflow:ellipsis;
+}
+#dateLabel{font-size:1.5cqw;color:var(--mute);white-space:nowrap}
+#wodText{
+  flex:1;min-height:0;width:100%;resize:none;padding:0;margin:0;
+  background:transparent;border:0;outline:0;color:var(--text);
+  font-family:var(--ui);font-weight:600;line-height:1.4;font-size:3cqw;
+  scrollbar-width:thin;scrollbar-color:#3a414d transparent;
+}
+#wodText::placeholder{color:#555d6b}
+
+/* ---------- 컨트롤 ---------- */
+#controls{
+  flex:none;background:var(--panel);border-top:1px solid var(--line);
+  padding:10px max(12px,env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom));
+  display:flex;flex-direction:column;gap:8px;font-size:14px;
+}
+.row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+fieldset:disabled{opacity:.45}
+.grow{flex:1}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:38px;cursor:pointer}
+button:hover{border-color:#3b4250}
+button:focus-visible,input:focus-visible{outline:2px solid var(--done);outline-offset:1px}
+button.primary{background:var(--work);color:#04120a;border-color:transparent;font-weight:700;min-width:120px}
+.tabs{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tabs button{border:0;border-radius:0;background:transparent;font-family:var(--num);letter-spacing:.06em}
+.tabs button[aria-selected=true]{background:var(--text);color:#000}
+label{display:inline-flex;align-items:center;gap:6px;color:var(--mute)}
+input[type=number]{width:66px;background:#0c0e12;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 8px;font:inherit;font-size:16px}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--work)}
+.fields{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+[data-for]{display:none}
+body[data-mode=fortime] [data-for~=fortime],
+body[data-mode=amrap] [data-for~=amrap],
+body[data-mode=emom] [data-for~=emom],
+body[data-mode=tabata] [data-for~=tabata]{display:inline-flex}
+.hint{color:var(--mute);font-size:12px}
+
+/* 화면 모드: 컨트롤을 숨기고 16:9 무대만 크게 */
+body.clean #controls{display:none}
+#reveal{
+  position:fixed;right:12px;bottom:12px;display:none;opacity:0;transition:opacity .3s;
+  width:44px;height:44px;padding:0;border-radius:50%;background:#000000b0;font-size:20px;
+}
+body.clean #reveal{display:block}
+body.clean.moving #reveal{opacity:1}
+
+#toast{
+  position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+  background:#000000d0;border:1px solid var(--line);padding:8px 14px;border-radius:999px;
+  font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;
+}
+#toast.show{opacity:1}
+</style>
+</head>
+<body data-mode="amrap">
+<div id="app">
+  <div id="stageWrap">
+    <section id="stage" data-phase="idle" data-paused="false">
+      <div class="half timer-half">
+        <div class="mode-label" id="modeLabel"></div>
+        <div class="phase-label" id="phaseLabel">READY</div>
+        <div class="clock" id="clock" role="timer" aria-live="off"></div>
+        <div class="sub" id="subInfo"></div>
+        <div class="bar"><i id="barFill"></i></div>
+      </div>
+      <div class="half wod-half">
+        <div class="wod-head">
+          <input id="wodTitle" type="text" maxlength="60" spellcheck="false" aria-label="제목" value="TODAY'S WOD">
+          <span id="dateLabel"></span>
+        </div>
+        <textarea id="wodText" spellcheck="false" aria-label="오늘의 운동"
+          placeholder="오늘 할 운동을 여기에 적으세요&#10;&#10;예)&#10;AMRAP 20&#10;- 10 Pull-ups&#10;- 15 Push-ups&#10;- 20 Air Squats"></textarea>
+      </div>
+    </section>
+  </div>
+
+  <nav id="controls">
+    <div class="row">
+      <fieldset id="cfg" class="row">
+        <div class="tabs" id="modeTabs" role="tablist">
+          <button type="button" role="tab" data-mode="fortime">FOR TIME</button>
+          <button type="button" role="tab" data-mode="amrap">AMRAP</button>
+          <button type="button" role="tab" data-mode="emom">EMOM</button>
+          <button type="button" role="tab" data-mode="tabata">TABATA</button>
+        </div>
+        <div class="fields">
+          <label data-for="fortime">타임캡(분, 0=없음) <input type="number" id="cap" inputmode="numeric"></label>
+          <label data-for="amrap">시간(분) <input type="number" id="amrap" inputmode="numeric"></label>
+          <label data-for="emom">간격(초) <input type="number" id="emomSec" inputmode="numeric"></label>
+          <label data-for="emom">라운드 <input type="number" id="emomRounds" inputmode="numeric"></label>
+          <label data-for="tabata">운동(초) <input type="number" id="tabWork" inputmode="numeric"></label>
+          <label data-for="tabata">휴식(초) <input type="number" id="tabRest" inputmode="numeric"></label>
+          <label data-for="tabata">라운드 <input type="number" id="tabRounds" inputmode="numeric"></label>
+          <label>준비(초) <input type="number" id="ready" inputmode="numeric"></label>
+        </div>
+      </fieldset>
+    </div>
+    <div class="row">
+      <button type="button" id="startBtn" class="primary">▶ 시작</button>
+      <button type="button" id="resetBtn">↺ 리셋</button>
+      <span class="grow"></span>
+      <span class="row" style="gap:6px">
+        <button type="button" id="fsDown" aria-label="글자 작게">A−</button>
+        <button type="button" id="fsUp" aria-label="글자 크게">A+</button>
+        <label><input type="checkbox" id="autofit"> 자동 맞춤</label>
+      </span>
+      <label><input type="checkbox" id="sound"> 소리</label>
+      <button type="button" id="shareBtn">링크 복사</button>
+      <button type="button" id="fullBtn">전체화면</button>
+      <button type="button" id="hideBtn">화면 모드 (H)</button>
+    </div>
+    <div class="hint">단축키: Space 시작/일시정지 · R 리셋 · H 화면 모드 · F 전체화면 &nbsp;|&nbsp; 운동 내용과 설정은 이 기기 브라우저에 자동 저장됩니다.</div>
+  </nav>
+</div>
+
+<button type="button" id="reveal" aria-label="컨트롤 보기">⚙</button>
+<div id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+
+const $ = s => document.querySelector(s);
+const KEY = 'wodTimer.v1';
+
+/* ---------- 설정 / 저장 ---------- */
+const DEFAULTS = {
+  mode:'amrap', cap:0, amrap:20, emomSec:60, emomRounds:10,
+  tabWork:20, tabRest:10, tabRounds:8, ready:10,
+  sound:true, fs:3, autofit:true, title:"TODAY'S WOD", wod:''
+};
+const LIMITS = {
+  cap:[0,180], amrap:[1,180], emomSec:[5,600], emomRounds:[1,99],
+  tabWork:[1,600], tabRest:[0,600], tabRounds:[1,99], ready:[0,60], fs:[1.2,6]
+};
+const MODES = ['fortime','amrap','emom','tabata'];
+const clamp = (v,[lo,hi]) => Math.min(hi,Math.max(lo,v));
+
+function sanitize(obj){
+  const out = {...DEFAULTS};
+  if(!obj || typeof obj !== 'object') return out;
+  for(const k of Object.keys(DEFAULTS)){
+    const v = obj[k];
+    if(typeof v !== typeof DEFAULTS[k]) continue;
+    if(k === 'mode'){ if(MODES.includes(v)) out[k] = v; }
+    else if(typeof v === 'number'){ if(isFinite(v)) out[k] = LIMITS[k] ? clamp(k==='fs' ? Math.round(v*10)/10 : Math.round(v), LIMITS[k]) : v; }
+    else if(typeof v === 'string') out[k] = v.slice(0, k==='wod' ? 5000 : 60);
+    else out[k] = v;
+  }
+  return out;
+}
+
+function b64enc(s){
+  let bin=''; new TextEncoder().encode(s).forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64dec(s){
+  const bin = atob(s.replace(/-/g,'+').replace(/_/g,'/'));
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+}
+
+let S = {...DEFAULTS};
+try { S = sanitize(JSON.parse(localStorage.getItem(KEY))); } catch(e){}
+// 공유 링크(#s=...)로 들어오면 그 내용을 불러오고 주소창에서는 지움
+try {
+  const m = location.hash.match(/^#s=(.+)$/);
+  if(m){
+    const shared = sanitize(JSON.parse(b64dec(m[1])));
+    S = {...shared, sound:S.sound};
+    history.replaceState(null,'',location.pathname+location.search);
+  }
+} catch(e){}
+
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+/* ---------- 타임라인 ---------- */
+function buildTimeline(c){
+  const segs = [];
+  if(c.ready > 0) segs.push({kind:'ready', dur:c.ready, dir:'down'});
+  if(c.mode === 'fortime'){
+    segs.push({kind:'work', dur:c.cap > 0 ? c.cap*60 : Infinity, dir:'up'});
+  } else if(c.mode === 'amrap'){
+    segs.push({kind:'work', dur:c.amrap*60, dir:'down'});
+  } else if(c.mode === 'emom'){
+    for(let r=1; r<=c.emomRounds; r++) segs.push({kind:'work', dur:c.emomSec, dir:'down', round:r, rounds:c.emomRounds});
+  } else {
+    for(let r=1; r<=c.tabRounds; r++){
+      segs.push({kind:'work', dur:c.tabWork, dir:'down', round:r, rounds:c.tabRounds});
+      if(r < c.tabRounds && c.tabRest > 0) segs.push({kind:'rest', dur:c.tabRest, dir:'down', round:r, rounds:c.tabRounds});
+    }
+  }
+  let t = 0;
+  for(const s of segs){ s.start = t; t += s.dur; }
+  return {segs, total:t};
+}
+function locate(tl, e){
+  if(e >= tl.total){
+    const i = tl.segs.length-1;
+    return {idx:i, local:tl.segs[i].dur, done:true};
+  }
+  let i = tl.segs.length-1;
+  while(i > 0 && tl.segs[i].start > e) i--;
+  return {idx:i, local:e - tl.segs[i].start, done:false};
+}
+function fmt(sec){
+  sec = Math.max(0, Math.floor(sec));
+  return String(Math.floor(sec/60)).padStart(2,'0') + ':' + String(sec%60).padStart(2,'0');
+}
+const short = s => s % 60 === 0 ? `${s/60}'` : `${s}s`;
+function modeTitle(){
+  switch(S.mode){
+    case 'fortime': return S.cap > 0 ? `FOR TIME · CAP ${S.cap}'` : 'FOR TIME';
+    case 'amrap':   return `AMRAP ${S.amrap}'`;
+    case 'emom':    return `EMOM ${S.emomRounds} × ${short(S.emomSec)}`;
+    default:        return `TABATA ${S.tabWork}/${S.tabRest} × ${S.tabRounds}`;
+  }
+}
+
+/* ---------- 소리 ---------- */
+let actx = null;
+function ensureAudio(){
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if(actx.state === 'suspended') actx.resume();
+  } catch(e){}
+}
+function tone(freq, dur, when=0, vol=0.35){
+  if(!S.sound || !actx) return;
+  try {
+    const t = actx.currentTime + when;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t+dur+0.02);
+  } catch(e){}
+}
+const beepShort = () => tone(880, 0.12);
+const beepLong  = () => tone(1320, 0.55);
+const beepDone  = () => { tone(1320,0.4,0); tone(1320,0.4,0.55); tone(1760,0.9,1.1); };
+
+/* ---------- 타이머 상태 ---------- */
+let TL = buildTimeline(S);
+let running = false, finished = false;
+let elapsed = 0, t0 = 0;           // elapsed: 멈춰 있는 동안 누적된 초
+let lastSeg = -1, lastKey = '';
+const nowSec = () => performance.now()/1000;
+const cur = () => running ? elapsed + (nowSec()-t0) : elapsed;
+
+let wakeLock = null;
+async function holdScreen(){
+  try {
+    if('wakeLock' in navigator && !wakeLock){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch(e){}
+}
+function freeScreen(){ try { wakeLock && wakeLock.release(); } catch(e){} wakeLock = null; }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && running) holdScreen(); });
+
+function start(){
+  if(finished) reset();
+  if(running) return;
+  ensureAudio();
+  if(elapsed === 0 && !TL.segs.some(s => s.kind === 'ready')) beepLong();
+  running = true; t0 = nowSec();
+  holdScreen();
+  render();
+}
+function pause(){
+  if(!running) return;
+  elapsed += nowSec() - t0; running = false;
+  freeScreen();
+  render();
+}
+function reset(){
+  running = false; finished = false; elapsed = 0; lastSeg = -1; lastKey = '';
+  freeScreen();
+  render();
+}
+function finish(){
+  running = false; finished = true; elapsed = TL.total;
+  freeScreen();
+  beepDone();
+}
+function confirmReset(){
+  if(elapsed > 0 && !finished && !confirm('진행 중인 타이머를 리셋할까요?')) return;
+  reset();
+}
+
+function handleBeeps(loc){
+  if(loc.idx !== lastSeg){
+    if(lastSeg !== -1) beepLong();
+    lastSeg = loc.idx; lastKey = '';
+  }
+  const seg = TL.segs[loc.idx];
+  if(isFinite(seg.dur)){
+    const rem = Math.ceil(seg.dur - loc.local);
+    const key = loc.idx + ':' + rem;
+    if(rem >= 1 && rem <= 3 && key !== lastKey){ lastKey = key; beepShort(); }
+  }
+}
+
+function tick(){
+  if(running){
+    const e = cur();
+    if(e >= TL.total) finish();
+    else handleBeeps(locate(TL, e));
+  }
+  render();
+}
+
+/* ---------- 화면 그리기 ---------- */
+const el = {
+  stage:$('#stage'), clock:$('#clock'), phase:$('#phaseLabel'), sub:$('#subInfo'),
+  bar:$('#barFill'), mode:$('#modeLabel'), start:$('#startBtn'),
+  wod:$('#wodText'), title:$('#wodTitle'), date:$('#dateLabel')
+};
+let last = {};
+function setText(node, key, val){ if(last[key] !== val){ last[key] = val; node.textContent = val; } }
+
+function render(){
+  const e = cur();
+  const loc = locate(TL, e);
+  const seg = TL.segs[loc.idx];
+  const idle = !running && !finished && e === 0;
+
+  let phase, label, sec, sub = '', progress = 0;
+  if(finished){
+    phase = 'done';
+    label = (S.mode === 'fortime' && S.cap > 0) ? 'TIME CAP' : 'FINISH';
+    sec = seg.dir === 'up' ? seg.dur : 0;
+    sub = 'GOOD WORK'; progress = 1;
+  } else if(idle){
+    const first = TL.segs.find(s => s.kind !== 'ready');
+    phase = 'idle'; label = 'READY';
+    sec = first.dir === 'up' ? 0 : first.dur;
+    if(first.round) sub = `ROUND 1 / ${first.rounds}`;
+    else if(S.mode === 'fortime' && S.cap > 0) sub = `TIME CAP ${fmt(S.cap*60)}`;
+  } else {
+    phase = seg.kind;
+    label = !running ? 'PAUSED' : seg.kind === 'ready' ? 'GET READY' : seg.kind === 'rest' ? 'REST' : 'WORK';
+    sec = seg.dir === 'up' ? Math.floor(loc.local) : Math.ceil(seg.dur - loc.local);
+    if(seg.round) sub = `ROUND ${seg.round} / ${seg.rounds}`;
+    else if(seg.kind === 'work' && S.mode === 'fortime' && S.cap > 0) sub = `TIME CAP ${fmt(S.cap*60)}`;
+    if(isFinite(seg.dur)) progress = Math.min(1, loc.local / seg.dur);
+  }
+
+  const txt = fmt(sec);
+  if(last.clock !== txt){
+    last.clock = txt;
+    el.clock.innerHTML = [...txt].map(ch => ch === ':' ? '<span class="c">:</span>' : `<span class="d">${ch}</span>`).join('');
+    document.title = (idle ? '' : txt + ' · ') + 'WOD Timer';
+  }
+  el.stage.dataset.phase = phase;
+  el.stage.dataset.paused = String(!running && !idle && !finished);
+  setText(el.phase, 'phase', label);
+  setText(el.sub, 'sub', sub);
+  setText(el.mode, 'mode', modeTitle());
+  el.bar.style.transform = `scaleX(${progress})`;
+
+  setText(el.start, 'btn', finished ? '↺ 다시 시작' : running ? '⏸ 일시정지' : idle ? '▶ 시작' : '▶ 계속');
+  $('#cfg').disabled = running || (!idle && !finished);
+}
+
+/* ---------- 컨트롤 연결 ---------- */
+function rebuild(){
+  TL = buildTimeline(S);
+  document.body.dataset.mode = S.mode;
+  document.querySelectorAll('#modeTabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === S.mode)));
+  reset();
+}
+
+document.querySelectorAll('#modeTabs button').forEach(b => b.addEventListener('click', () => {
+  S.mode = b.dataset.mode; save(); rebuild();
+}));
+
+for(const k of Object.keys(LIMITS)){
+  const input = document.getElementById(k);
+  if(!input) continue;
+  input.value = S[k];
+  input.addEventListener('input', () => {
+    if(input.value === '' || !isFinite(input.valueAsNumber)) return;
+    S[k] = clamp(Math.round(input.valueAsNumber), LIMITS[k]);
+    save(); rebuild();
+  });
+  input.addEventListener('change', () => { input.value = S[k]; });
+}
+
+$('#startBtn').addEventListener('click', () => { running ? pause() : start(); });
+$('#resetBtn').addEventListener('click', confirmReset);
+
+// 마우스로 누른 버튼은 포커스를 풀어서 Space 단축키가 그대로 동작하게 함
+$('#controls').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(b && e.detail > 0) b.blur();
+});
+
+/* 오른쪽: 운동 내용 */
+el.title.value = S.title;
+el.wod.value = S.wod;
+el.title.addEventListener('input', () => { S.title = el.title.value; save(); });
+el.wod.addEventListener('input', () => { S.wod = el.wod.value; save(); scheduleFit(); });
+
+let fitQueued = false;
+function scheduleFit(){ if(fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fit(); }); }
+function fit(){
+  const w = el.stage.clientWidth;
+  if(!w) return;
+  const maxPx = S.fs * w / 100;
+  el.wod.style.fontSize = maxPx + 'px';
+  if(!S.autofit) return;
+  const minPx = LIMITS.fs[0] * w / 100;
+  let px = maxPx;
+  while(el.wod.scrollHeight > el.wod.clientHeight + 1 && px > minPx){
+    px *= 0.96;
+    el.wod.style.fontSize = px + 'px';
+  }
+}
+new ResizeObserver(scheduleFit).observe(el.stage);
+
+$('#autofit').checked = S.autofit;
+$('#autofit').addEventListener('change', e => { S.autofit = e.target.checked; save(); fit(); });
+$('#sound').checked = S.sound;
+$('#sound').addEventListener('change', e => { S.sound = e.target.checked; save(); if(S.sound){ ensureAudio(); beepShort(); } });
+const stepFs = d => { S.fs = clamp(Math.round((S.fs + d)*10)/10, LIMITS.fs); save(); fit(); };
+$('#fsUp').addEventListener('click', () => stepFs(0.2));
+$('#fsDown').addEventListener('click', () => stepFs(-0.2));
+
+/* 날짜 */
+function updateDate(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  el.date.textContent = `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} (${'일월화수목금토'[d.getDay()]})`;
+}
+
+/* 링크 복사 / 전체화면 / 화면 모드 */
+let toastTimer;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+$('#shareBtn').addEventListener('click', async () => {
+  const {sound, ...shared} = S;
+  const url = location.href.split('#')[0] + '#s=' + b64enc(JSON.stringify(shared));
+  let ok = false;
+  try { await navigator.clipboard.writeText(url); ok = true; } catch(e){}
+  if(ok) toast('링크를 복사했어요. 다른 기기에서 열면 같은 운동·설정이 들어옵니다');
+  else prompt('아래 링크를 복사하세요', url);
+});
+
+function setClean(on){
+  document.body.classList.toggle('clean', on);
+  scheduleFit();
+}
+const toggleFull = () => {
+  if(document.fullscreenElement) document.exitFullscreen();
+  else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+};
+if(!document.fullscreenEnabled) $('#fullBtn').hidden = true;
+$('#fullBtn').addEventListener('click', toggleFull);
+$('#hideBtn').addEventListener('click', () => setClean(true));
+$('#reveal').addEventListener('click', () => setClean(false));
+document.addEventListener('fullscreenchange', () => setClean(!!document.fullscreenElement));
+
+let movingTimer;
+const nudge = () => {
+  document.body.classList.add('moving');
+  clearTimeout(movingTimer);
+  movingTimer = setTimeout(() => document.body.classList.remove('moving'), 2500);
+};
+addEventListener('pointermove', nudge);
+addEventListener('pointerdown', nudge);
+
+/* 키보드 (한글 자판에서도 되도록 e.code 사용) */
+addEventListener('keydown', e => {
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  if(e.target.closest && e.target.closest('input,textarea,select,button,[contenteditable]')) return;
+  switch(e.code){
+    case 'Space': e.preventDefault(); running ? pause() : start(); break;
+    case 'KeyR':  confirmReset(); break;
+    case 'KeyH':  setClean(!document.body.classList.contains('clean')); break;
+    case 'KeyF':  if(document.fullscreenEnabled) toggleFull(); break;
+    case 'Escape': if(document.body.classList.contains('clean') && !document.fullscreenElement) setClean(false); break;
+  }
+});
+
+/* 시작 */
+updateDate();
+setInterval(updateDate, 60000);
+setInterval(tick, 50);
+rebuild();
+scheduleFit();
+document.fonts && document.fonts.ready.then(scheduleFit);
+})();
+</script>
+</body>
+</html>
