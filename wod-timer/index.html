@@ -45,7 +45,7 @@ html,body{height:100%;margin:0;background:#000;color:var(--text);font-family:var
 }
 .mode-label{font-family:var(--num);font-size:2.1cqw;letter-spacing:.12em;color:var(--mute);text-transform:uppercase}
 .phase-label{font-family:var(--num);font-size:4cqw;font-weight:700;letter-spacing:.16em;color:var(--c);min-height:1.2em;line-height:1.2}
-.phase-label.ko{letter-spacing:.03em}
+.phase-label.ko,.sub.ko,.mode-label.ko{letter-spacing:.03em}
 .clock{
   display:flex;justify-content:center;
   font-family:var(--num);font-weight:700;font-size:16cqw;line-height:1.05;color:var(--c);
@@ -327,7 +327,7 @@ function modeTitle(){
     case 'amrap':   return `AMRAP ${S.amrap}'`;
     case 'emom':    return `EMOM ${S.emomRounds} × ${short(S.emomSec)}`;
     case 'tabata':  return `TABATA ${S.tabWork}/${S.tabRest} × ${S.tabRounds}`;
-    default:        return `${S.stMoves} MOVES · ${S.stWork}/${S.stRest} × ${S.stSets} SETS`;
+    default:        return `${S.stMoves}동작 · ${S.stWork}/${S.stRest} × ${S.stSets}세트`;
   }
 }
 
@@ -448,11 +448,11 @@ function setText(node, key, val){ if(last[key] !== val){ last[key] = val; node.t
 function subFor(seg){
   if(seg.round) return `ROUND ${seg.round} / ${seg.rounds}`;
   if(seg.moves){
-    if(seg.next) return `MOVE ${seg.move + 1} / ${seg.moves}`;
-    if(seg.kind === 'rest') return `MOVE ${seg.move} / ${seg.moves}\nNEXT SET ${seg.set + 1} / ${seg.sets}`;
-    return `MOVE ${seg.move} / ${seg.moves}\nSET ${seg.set} / ${seg.sets}`;
+    if(seg.next) return `동작 ${seg.move + 1} / ${seg.moves}`;
+    if(seg.kind === 'rest') return `동작 ${seg.move} / ${seg.moves}\n다음 세트 ${seg.set + 1} / ${seg.sets}`;
+    return `동작 ${seg.move} / ${seg.moves}\n세트 ${seg.set} / ${seg.sets}`;
   }
-  if(seg.kind === 'ready') return S.mode === 'station' ? `MOVE 1 / ${S.stMoves}` : '';
+  if(seg.kind === 'ready') return S.mode === 'station' ? `동작 1 / ${S.stMoves}` : '';
   if(S.mode === 'fortime' && S.cap > 0) return `TIME CAP ${fmt(S.cap*60)}`;
   return '';
 }
@@ -490,10 +490,12 @@ function render(){
   }
   el.stage.dataset.phase = phase;
   el.stage.dataset.paused = String(!running && !idle && !finished);
+  const title = modeTitle();
   setText(el.phase, 'phase', label);
-  el.phase.classList.toggle('ko', /[가-힣]/.test(label));
   setText(el.sub, 'sub', sub);
-  setText(el.mode, 'mode', modeTitle());
+  setText(el.mode, 'mode', title);
+  // 영어에 맞춘 넓은 글자 간격이 한글에서는 벌어져 보이므로 한글 문구일 때만 좁힘
+  for(const [node, t] of [[el.phase, label], [el.sub, sub], [el.mode, title]]) node.classList.toggle('ko', /[가-힣]/.test(t));
   el.bar.style.transform = `scaleX(${progress})`;
 
   setText(el.start, 'btn', finished ? '↺ 다시 시작' : running ? '⏸ 일시정지' : idle ? '▶ 시작' : '▶ 계속');
