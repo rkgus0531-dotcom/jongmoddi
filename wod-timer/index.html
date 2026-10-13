@@ -45,6 +45,7 @@ html,body{height:100%;margin:0;background:#000;color:var(--text);font-family:var
 }
 .mode-label{font-family:var(--num);font-size:2.1cqw;letter-spacing:.12em;color:var(--mute);text-transform:uppercase}
 .phase-label{font-family:var(--num);font-size:4cqw;font-weight:700;letter-spacing:.16em;color:var(--c);min-height:1.2em;line-height:1.2}
+.phase-label.ko{letter-spacing:.03em}
 .clock{
   display:flex;justify-content:center;
   font-family:var(--num);font-weight:700;font-size:16cqw;line-height:1.05;color:var(--c);
@@ -447,7 +448,7 @@ function setText(node, key, val){ if(last[key] !== val){ last[key] = val; node.t
 function subFor(seg){
   if(seg.round) return `ROUND ${seg.round} / ${seg.rounds}`;
   if(seg.moves){
-    if(seg.next) return `MOVE ${seg.move + 1} / ${seg.moves}\nGET READY`;
+    if(seg.next) return `MOVE ${seg.move + 1} / ${seg.moves}`;
     if(seg.kind === 'rest') return `MOVE ${seg.move} / ${seg.moves}\nNEXT SET ${seg.set + 1} / ${seg.sets}`;
     return `MOVE ${seg.move} / ${seg.moves}\nSET ${seg.set} / ${seg.sets}`;
   }
@@ -475,7 +476,7 @@ function render(){
     sub = subFor(first);
   } else {
     phase = seg.next ? 'ready' : seg.kind;      // 다음 동작 준비는 노란색
-    label = !running ? 'PAUSED' : seg.next ? 'NEXT MOVE' : seg.kind === 'ready' ? 'GET READY' : seg.kind === 'rest' ? 'REST' : 'WORK';
+    label = !running ? 'PAUSED' : seg.next ? '다음 동작 준비' : seg.kind === 'ready' ? 'GET READY' : seg.kind === 'rest' ? '휴식' : '운동';
     sec = seg.dir === 'up' ? Math.floor(loc.local) : Math.ceil(seg.dur - loc.local);
     sub = subFor(seg);
     if(isFinite(seg.dur)) progress = Math.min(1, loc.local / seg.dur);
@@ -490,6 +491,7 @@ function render(){
   el.stage.dataset.phase = phase;
   el.stage.dataset.paused = String(!running && !idle && !finished);
   setText(el.phase, 'phase', label);
+  el.phase.classList.toggle('ko', /[가-힣]/.test(label));
   setText(el.sub, 'sub', sub);
   setText(el.mode, 'mode', modeTitle());
   el.bar.style.transform = `scaleX(${progress})`;
