@@ -116,6 +116,22 @@ body[data-mode=emom] [data-for~=emom],
 body[data-mode=tabata] [data-for~=tabata],
 body[data-mode=station] [data-for~=station]{display:inline-flex}
 .hint{color:var(--mute);font-size:12px}
+
+/* 오늘의 5동작 추천 (컨트롤 쪽 패널이라 방송 화면에는 안 나옴) */
+#rec{border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+#rec > summary{cursor:pointer;padding:9px 12px;font-weight:700;color:var(--ready);list-style:none}
+#rec > summary::-webkit-details-marker{display:none}
+#rec > summary::after{content:" ▾"}
+#rec[open] > summary::after{content:" ▴"}
+.rec-body{padding:0 12px 10px;max-height:34vh;overflow:auto}
+.rec-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
+#recList{margin:0 0 8px;padding:0;list-style:none;display:grid;gap:8px}
+#recList li{display:grid;grid-template-columns:22px 1fr;gap:0 8px;align-items:start}
+.rec-no{font-family:var(--num);font-weight:700;color:var(--ready);text-align:center}
+.rec-line{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.rec-tag{font-size:11px;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.rec-name{font-weight:700;color:var(--text)}
+.rec-how{color:var(--mute);font-size:13px;line-height:1.45}
 @media (max-width:520px){
   .tabs{width:100%}
   .tabs button{flex:1;padding:8px 4px;font-size:12px;letter-spacing:.02em}
@@ -203,6 +219,19 @@ body.clean.moving #reveal{opacity:1}
       <button type="button" id="fullBtn">전체화면</button>
       <button type="button" id="hideBtn">화면 모드 (H)</button>
     </div>
+    <details id="rec">
+      <summary>오늘의 5동작 추천</summary>
+      <div class="rec-body">
+        <div class="rec-head">
+          <span class="hint" id="recDate"></span>
+          <span class="grow"></span>
+          <button type="button" id="recNext">다른 추천</button>
+          <button type="button" id="recApply" class="primary">운동 칸에 넣기</button>
+        </div>
+        <ol id="recList"></ol>
+        <div class="hint">짐스틱 어르신 운동 기준이에요. 오늘 컨디션에 맞춰 횟수와 범위를 조절하고, 통증이 있으면 바로 멈춰요.</div>
+      </div>
+    </details>
     <div class="hint">단축키: Space 시작/일시정지 · R 리셋 · H 화면 모드 · F 전체화면 &nbsp;|&nbsp; 운동 내용과 설정은 이 기기 브라우저에 자동 저장됩니다.</div>
   </nav>
 </div>
@@ -568,11 +597,107 @@ $('#fsUp').addEventListener('click', () => stepFs(0.2));
 $('#fsDown').addEventListener('click', () => stepFs(-0.2));
 
 /* 날짜 */
-function updateDate(){
+function dateText(){
   const d = new Date();
   const p = n => String(n).padStart(2,'0');
-  el.date.textContent = `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} (${'일월화수목금토'[d.getDay()]})`;
+  return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} (${'일월화수목금토'[d.getDay()]})`;
 }
+function updateDate(){
+  el.date.textContent = dateText();
+  syncRecDay();
+}
+
+/* ---------- 오늘의 5동작 추천 (짐스틱 어르신 운동) ---------- */
+// 흐름: 하체 → 상체 밀기 → 전신(가장 힘든 동작) → 상체 당기기 → 코어·균형
+// 동작을 추가·수정하려면 아래 목록만 고치면 됨. 칸마다 5개 이상 있어야 전날과 같은 동작이 이틀 연속 나오지 않음.
+const REC_SLOTS = [
+  {tag:'하체', items:[
+    {n:'바운스 스쿼트',   how:'발을 어깨너비로 벌리고 짐스틱을 가슴 앞에 잡아요. 얕게 앉았다 리듬 있게 일어나요.', easy:'의자에 앉았다 일어나기'},
+    {n:'의자 터치 스쿼트', how:'의자 앞에 서서 엉덩이가 의자에 살짝 닿을 만큼만 앉았다 일어나요.', easy:'손으로 의자를 짚고 하기'},
+    {n:'짐스틱 런지',     how:'짐스틱을 앞에 세워 짚고 한 발을 앞으로 내디뎌 얕게 앉았다 돌아와요.', easy:'보폭을 줄이고 의자를 잡기'},
+    {n:'사이드 스텝',     how:'짐스틱을 가슴 앞에 들고 무릎을 살짝 굽혀 옆으로 한 걸음씩 걸어요.', easy:'제자리 걷기로 대체'},
+    {n:'카프 레이즈',     how:'짐스틱을 앞에 세워 짚고 뒤꿈치를 들었다 천천히 내려요.', easy:'앉아서 뒤꿈치 들기'}
+  ]},
+  {tag:'상체 밀기', items:[
+    {n:'숄더 프레스',     how:'짐스틱을 어깨 높이에서 위로 밀어 올렸다 천천히 내려요. 허리가 젖혀지지 않게 해요.', easy:'올리는 높이를 낮추기'},
+    {n:'체스트 프레스',   how:'짐스틱을 가슴 앞에서 앞으로 밀었다 당겨요. 어깨는 내리고 해요.', easy:'앉아서 하기'},
+    {n:'프론트 레이즈',   how:'짐스틱을 양손으로 잡고 어깨 높이까지 앞으로 들었다 내려요.', easy:'가슴 높이까지만 들기'},
+    {n:'오버헤드 리치',   how:'짐스틱을 머리 위로 길게 뻗어 올렸다 내려요. 숨은 내쉬면서 올려요.', easy:'앉아서 팔을 반만 올리기'},
+    {n:'벽 짚고 팔 굽히기', how:'벽에서 한 걸음 떨어져 어깨 높이로 손을 짚고 팔꿈치를 굽혔다 밀어내요.', easy:'벽에 더 가깝게 서기'}
+  ]},
+  {tag:'전신', items:[
+    {n:'쓰러스터',        how:'짐스틱을 어깨 앞에 잡고 앉았다 일어나는 힘으로 위로 밀어 올려요. 숨을 참지 않아요.', easy:'스쿼트를 얕게, 올리는 높이를 낮추기'},
+    {n:'마칭 팔 올리기',  how:'제자리에서 무릎을 올리며 걷고, 걸음에 맞춰 짐스틱을 가슴에서 위로 올려요.', easy:'앉아서 무릎 올리기'},
+    {n:'우드 찹',         how:'짐스틱을 한쪽 어깨 위에서 반대쪽 무릎 옆으로 대각선으로 내려요. 좌우 번갈아 해요.', easy:'앉아서 작은 동작으로'},
+    {n:'사이드 스텝 오버헤드', how:'옆으로 한 걸음 걸으며 짐스틱을 머리 위로 올렸다 내려요.', easy:'제자리에서 팔만 올리기'},
+    {n:'스쿼트 하이풀',   how:'앉았다 일어나며 짐스틱을 가슴 높이까지 팔꿈치를 높게 당겨 올려요.', easy:'스쿼트를 얕게, 당기는 높이를 낮추기'}
+  ]},
+  {tag:'상체 당기기', items:[
+    {n:'짐스틱 하이풀',   how:'짐스틱을 허벅지 앞에서 가슴 높이까지 팔꿈치를 높게 당겨 올려요. 어깨는 으쓱하지 않아요.', easy:'배 높이까지만 당기기'},
+    {n:'시티드 로우',     how:'허리를 펴고 앉아 팔꿈치를 뒤로 보내며 날개뼈를 모아요.', easy:'당기는 범위를 줄이기'},
+    {n:'바이셉스 컬',     how:'팔꿈치를 옆구리에 붙이고 짐스틱을 어깨 쪽으로 굽혀 올렸다 내려요.', easy:'앉아서 하기'},
+    {n:'풀다운',          how:'짐스틱을 머리 위에서 가슴 앞으로 팔꿈치를 낮추며 당겨 내려요.', easy:'얼굴 높이에서 시작하기'},
+    {n:'스탠딩 로우',     how:'서서 팔꿈치를 뒤로 당기며 날개뼈를 모아요. 허리는 곧게 펴요.', easy:'앉아서 하기'}
+  ]},
+  {tag:'코어·균형', items:[
+    {n:'앉아서 트위스트', how:'짐스틱을 어깨에 걸치고 앉아 허리를 펴고 좌우로 천천히 돌려요.', easy:'작게 돌리기 (허리가 아프면 멈춰요)'},
+    {n:'사이드 벤드',     how:'짐스틱을 머리 위로 들고 몸통을 좌우로 천천히 기울여요.', easy:'앉아서 하기'},
+    {n:'한 발 서기',      how:'짐스틱이나 의자를 짚고 한 발로 서요. 좌우 번갈아 해요.', easy:'발끝을 바닥에 살짝 댄 채로'},
+    {n:'앉아서 무릎 올리기', how:'짐스틱을 가슴 앞에 잡고 앉아 무릎을 번갈아 올려요. 배에 힘을 줘요.', easy:'발을 낮게 들기'},
+    {n:'일자 걷기',       how:'짐스틱을 짚고 한 발 앞에 다른 발을 이어 붙여 일직선으로 걸어요.', easy:'벽을 따라 걷기'}
+  ]}
+];
+const dayNumber = () => { const d = new Date(); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000); };
+let recDay = dayNumber(), recBump = 0;
+
+// 날짜가 같으면 어느 기기에서 열어도 같은 5동작. 칸마다 하루에 한 칸씩 돌고,
+// 한 바퀴(칸의 동작 수)마다 조금씩 어긋나게 해서 같은 조합이 반복되지 않음.
+function recommend(day){
+  return REC_SLOTS.map((slot, i) => {
+    const n = slot.items.length;
+    return {tag:slot.tag, ...slot.items[(day + Math.floor(day / n) * ((i % 3) + 1)) % n]};
+  });
+}
+function renderRec(){
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+  const list = $('#recList');
+  list.textContent = '';
+  recommend(recDay + recBump).forEach((m, i) => {
+    const li = document.createElement('li');
+    const line = document.createElement('div'); line.className = 'rec-line';
+    line.append(mk('span','rec-tag',m.tag), mk('span','rec-name',m.n));
+    const body = document.createElement('div');
+    body.append(line, mk('div','rec-how',`${m.how}  ·  쉬운 버전: ${m.easy}`));
+    li.append(mk('span','rec-no',String(i+1)), body);
+    list.append(li);
+  });
+  $('#recDate').textContent = `${dateText()} 추천` + (recBump ? ` · 다른 추천 ${recBump}` : '');
+}
+function syncRecDay(){
+  const d = dayNumber();
+  if(d !== recDay){ recDay = d; recBump = 0; renderRec(); }   // 날짜가 바뀌면 새 추천
+}
+// 운동 칸에 들어갈 글: STATION이면 운영 방식 안내를 맨 위에 붙임
+function recText(){
+  const head = S.mode === 'station'
+    ? `${S.stWork}초 운동 / ${S.stRest}초 휴식 × ${S.stSets}세트\n세트 후 ${S.stGap}초 휴식 (다음 동작 준비)\n\n` : '';
+  return head + recommend(recDay + recBump).map((m, i) => `${i+1}. ${m.n}`).join('\n');
+}
+let recApplyArmedAt = -Infinity;
+function applyRec(){
+  const text = recText();
+  const now = el.wod.value.trim();
+  if(now && now !== text && performance.now() - recApplyArmedAt > 3000){
+    recApplyArmedAt = performance.now();
+    toast('운동 칸에 이미 내용이 있어요. 3초 안에 한 번 더 누르면 바꿉니다');
+    return;
+  }
+  recApplyArmedAt = -Infinity;
+  el.wod.value = text; S.wod = text; save(); scheduleFit();
+  toast('운동 칸에 넣었어요');
+}
+$('#recNext').addEventListener('click', () => { recBump++; renderRec(); });
+$('#recApply').addEventListener('click', applyRec);
 
 /* 링크 복사 / 전체화면 / 화면 모드 */
 let toastTimer;
@@ -629,6 +754,7 @@ addEventListener('keydown', e => {
 });
 
 /* 시작 */
+renderRec();
 updateDate();
 setInterval(updateDate, 60000);
 setInterval(tick, 50);
