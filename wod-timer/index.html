@@ -13,6 +13,7 @@
   --bg:#07080a; --panel:#13161b; --panel2:#1b1f26; --line:#2a2f38;
   --text:#f1f3f5; --mute:#8b93a1;
   --idle:#e8eaed; --ready:#ffc83d; --work:#35e08a; --rest:#ff5a5f; --done:#5ac8fa;
+  color-scheme:dark;
   --num:"Oswald",Impact,"Arial Narrow","Helvetica Neue",Arial,sans-serif;
   --ui:system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
 }
@@ -357,8 +358,15 @@ function finish(){
   freeScreen();
   beepDone();
 }
+// 진행 중에는 실수로 지우지 않도록 3초 안에 한 번 더 눌러야 리셋 (브라우저 확인창은 쓰지 않음)
+let resetArmedAt = -Infinity;
 function confirmReset(){
-  if(elapsed > 0 && !finished && !confirm('진행 중인 타이머를 리셋할까요?')) return;
+  if(elapsed > 0 && !finished && performance.now() - resetArmedAt > 3000){
+    resetArmedAt = performance.now();
+    toast('진행 중이에요. 3초 안에 한 번 더 누르면 리셋됩니다');
+    return;
+  }
+  resetArmedAt = -Infinity;
   reset();
 }
 
@@ -520,7 +528,10 @@ $('#shareBtn').addEventListener('click', async () => {
   let ok = false;
   try { await navigator.clipboard.writeText(url); ok = true; } catch(e){}
   if(ok) toast('링크를 복사했어요. 다른 기기에서 열면 같은 운동·설정이 들어옵니다');
-  else prompt('아래 링크를 복사하세요', url);
+  else {
+    history.replaceState(null, '', url);
+    toast('복사에 실패했어요. 주소창의 링크를 직접 복사하세요');
+  }
 });
 
 function setClean(on){
